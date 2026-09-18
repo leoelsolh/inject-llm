@@ -5,12 +5,9 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"regexp"
 
 	"github.com/leoelsolh/local-prompt-injection/conf"
 )
-
-var toolPattern = regexp.MustCompile(`<tool>http_get:([^<]+)</tool>`)
 
 type Message struct {
 	Role    string `json:"role"`
@@ -59,7 +56,7 @@ func chat(model string, messages []Message) (string, error) {
 
 }
 
-func runAgent(model string, prompt string) (string, error) {
+func runAgent(model string, prompt string) (string, int, error) {
 	messages := []Message{
 		{Role: "system", Content: conf.SystemPrompt},
 		{Role: "user", Content: prompt},
@@ -67,24 +64,26 @@ func runAgent(model string, prompt string) (string, error) {
 
 	content, err := chat(model, messages)
 	if err != nil {
-		return "", err
+		return "", 0, err
 	}
 
 	match := toolPattern.FindStringSubmatch(content)
 	if match == nil {
-		return content, nil
+		return content, 0, nil
 	}
 	targetURL := match[1]
 
 	fetchResp, err := http.Get(targetURL)
 	if err != nil {
-		return "", err
+		return "<fetch failed>", -1, err
 	}
 	defer fetchResp.Body.Close()
 
+	status := fetchResp.StatusCode
+
 	fetchBytes, err := io.ReadAll(fetchResp.Body)
 	if err != nil {
-		return "", err
+		return "", status, err
 	}
 	fetched := string(fetchBytes)
 	if len(fetched) > conf.MaxContent {
@@ -96,7 +95,7 @@ func runAgent(model string, prompt string) (string, error) {
 
 	final, err := chat(model, messages)
 	if err != nil {
-		return "", err
+		return "", status, err
 	}
-	return final, nil
+	return final, status, nil
 }
