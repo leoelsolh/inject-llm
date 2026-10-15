@@ -10,4 +10,4 @@ venv/
 .env
 .DS_Store
 *.swp
-go.mod
+go/inject-llm
